@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MyWin Results</title>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Poppins:wght@700;800&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -50,13 +51,34 @@
       color: #111;
       -webkit-text-fill-color: #111;
       font-size: 2.4cqw;
-      font-weight: 700;
-      font-family: Arial, sans-serif;
+      font-weight: 400;
+      font-family: 'Anton', Arial, sans-serif;
       text-align: center;
       letter-spacing: 1px;
       cursor: pointer;
       padding: 0;
     }
+
+    /* ── PRIZE AMOUNT INPUTS (ST7AR jackpot + SUPER6 prize) ── */
+    .prize-input {
+      position: absolute;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: white;
+      -webkit-text-fill-color: white;
+      font-family: 'Anton', Arial, sans-serif;
+      font-size: 4.0cqw; /* overridden by JS to px for consistent rendering */
+      font-weight: 400;
+      text-align: left;
+      letter-spacing:0.01em;
+      text-shadow: 0.07em 0.09em 0 rgba(0,0,0,0.38), 0.1em 0.12em 0.08em rgba(0,0,0,0.2);
+      padding: 0 0 0 1%;
+      cursor: text;
+      line-height: 1;
+    }
+    .prize-input:focus { outline: none; }
+    .prize-input::placeholder { color: rgba(255,255,255,0.45); }
 
     /* ── CIRCLE INPUTS ──
        Each circle in the image is 89 px → 6.953% wide × 8.874% tall */
@@ -70,7 +92,7 @@
       color: #111;
       font-size: 3.2cqw;
       font-weight: 800;
-      font-family: Arial, sans-serif;
+      font-family: 'Poppins', Arial, sans-serif;
       text-align: center;
       -moz-appearance: textfield;
       padding: 0;
@@ -146,6 +168,18 @@
 
     <!-- DATE BAR (orange blank rectangle top-right under RESULT) -->
     <input type="text" class="date-input" id="dateInput" placeholder="DD-MM-YYYY" maxlength="10">
+
+    <!-- ST7AR jackpot amount — blank area between "CURRENT JACKPOT" and "DRAW TIME 11.15"
+         x: 21–249 (1.64%–19.45%), y: 334–402 (33.3%–40.1%) -->
+    <input type="text" class="prize-input" id="st7arAmount"
+           style="left:1.64%;top:32.8%;width:18.5%;height:7.5%;"
+           placeholder="0,000,000" maxlength="12">
+
+    <!-- SUPER6 prize amount — blank area above "DRAW TIME 10.10"
+         x: 16–246 (1.25%–19.2%), y: 463–523 (46.2%–52.1%) -->
+    <input type="text" class="prize-input" id="super6Amount"
+           style="left:1.25%;top:45.5%;width:18.5%;height:7.5%;"
+           placeholder="0,000,000" maxlength="12">
 
     <!--
       CIRCLE POSITIONS (% of 1280 w × 1003 h)
@@ -227,6 +261,22 @@
     });
   });
 
+  /* ── PRIZE FONT: set px so browser & html2canvas render identically ── */
+  var prizeInputs = [
+    document.getElementById('st7arAmount'),
+    document.getElementById('super6Amount')
+  ];
+
+  function syncPrizeFontSize() {
+    var px = Math.round(document.getElementById('board').offsetWidth * 4.2 / 100);
+    prizeInputs.forEach(function(el) { el.style.fontSize = px + 'px'; });
+  }
+
+  syncPrizeFontSize();
+  if (window.ResizeObserver) {
+    new ResizeObserver(syncPrizeFontSize).observe(document.getElementById('board'));
+  }
+
   /* ── DATE: auto-insert dashes as user types (DD-MM-YYYY) ── */
   const dateInput = document.getElementById('dateInput');
   dateInput.addEventListener('input', function() {
@@ -237,6 +287,24 @@
     this.value = v;
   });
 
+  /* ── PRIZE INPUTS: auto-comma formatting ── */
+  function addCommas(val) {
+    var digits = val.replace(/[^0-9]/g, '');
+    if (!digits) return '';
+    return Number(digits).toLocaleString('en-US'); // Western style: 1,200,000
+  }
+
+  ['st7arAmount', 'super6Amount'].forEach(function(id) {
+    document.getElementById(id).addEventListener('input', function() {
+      var pos = this.selectionStart;
+      var oldLen = this.value.length;
+      this.value = addCommas(this.value);
+      // keep cursor roughly in place
+      var diff = this.value.length - oldLen;
+      this.setSelectionRange(pos + diff, pos + diff);
+    });
+  });
+
   /* ── SAVE AS IMAGE ──
      Always exports at 1280 × 1003 px regardless of viewport size.
      The save button is outside #board so it never appears in the capture. */
@@ -245,57 +313,100 @@
     const loading = document.getElementById('loading');
     loading.classList.add('show');
 
-    // Scale so the canvas output is always 1280 px wide (original image size)
-    const scale = 1280 / board.offsetWidth;
-
-    // Date is already in DD-MM-YYYY format (user typed it that way)
-    const dateLabel = document.getElementById('dateInput').value;
-    const circleValues = circles.map(function(i) { return i.value; });
-
     try {
-      const canvas = await html2canvas(board, {
-        scale: scale,
-        backgroundColor: null,
-        logging: false,
-        onclone: function(clonedDoc) {
-          /* Replace date input with a plain div so the text renders cleanly */
-          const di = clonedDoc.getElementById('dateInput');
-          if (di) {
-            const dv = clonedDoc.createElement('div');
-            dv.style.cssText = di.style.cssText +
-              ';position:absolute;left:61.48%;top:9.37%;width:17.27%;height:4.39%;' +
-              'display:flex;align-items:center;justify-content:center;' +
-              'color:#111;font-weight:700;font-family:Arial,sans-serif;' +
-              'font-size:2.4cqw;letter-spacing:1px;';
-            dv.textContent = dateLabel;
-            di.parentNode.replaceChild(dv, di);
-          }
+      // Collect all entered values
+      const dateLabel  = document.getElementById('dateInput').value;
+      const st7arAmt   = document.getElementById('st7arAmount').value;
+      const super6Amt  = document.getElementById('super6Amount').value;
+      const allCircles = Array.from(document.querySelectorAll('.c'));
+      const circleVals = allCircles.map(function(i) { return i.value; });
 
-          /* Replace each circle input with a plain div centred over the circle */
-          clonedDoc.querySelectorAll('.c').forEach(function(inp, idx) {
-            const dv = clonedDoc.createElement('div');
-            dv.style.cssText =
-              'position:absolute;' +
-              'left:'   + inp.style.left   + ';' +
-              'top:'    + inp.style.top    + ';' +
-              'width:6.953%;height:8.874%;' +
-              'display:flex;align-items:center;justify-content:center;' +
-              'color:#111;font-weight:800;font-family:Arial,sans-serif;' +
-              'font-size:3.2cqw;line-height:1;';
-            const val = circleValues[idx];
-            dv.textContent = (val !== '' && val !== undefined && val !== null)
-              ? String(parseInt(val, 10))
-              : '';
-            inp.parentNode.replaceChild(dv, inp);
-          });
-        }
+      // Wait for Poppins + Anton to be ready before drawing on canvas
+      await document.fonts.ready;
+
+      // Always output at original template resolution
+      var W = 1280, H = 1000;
+      var canvas = document.createElement('canvas');
+      canvas.width  = W;
+      canvas.height = H;
+      var ctx = canvas.getContext('2d');
+
+      // Draw background image pulled from board computed CSS
+      var bgStyle = window.getComputedStyle(board).backgroundImage;
+      var imgSrc  = bgStyle.replace(/^url\(["\'"]?/, '').replace(/["\'"]?\)$/, '');
+      var bgImg   = new Image();
+      bgImg.src   = imgSrc;
+      await new Promise(function(resolve, reject) {
+        bgImg.onload  = resolve;
+        bgImg.onerror = reject;
+      });
+      ctx.drawImage(bgImg, 0, 0, W, H);
+
+      // DATE (Anton, black, centred in orange bar)
+      var datePx = Math.round(W * 2.4 / 100);
+      ctx.font         = '400 ' + datePx + 'px Anton';
+      ctx.fillStyle    = '#111';
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowColor  = 'transparent';
+      if (dateLabel) {
+        ctx.fillText(dateLabel,
+          (0.6148 + 0.1727 / 2) * W,
+          (0.0937 + 0.0439 / 2) * H);
+      }
+
+      // PRIZE AMOUNTS (Anton, white, double shadow)
+      var prizePx = Math.round(W * 4.2 / 100);
+      ctx.font         = '400 ' + prizePx + 'px Anton';
+      ctx.fillStyle    = 'white';
+      ctx.textAlign    = 'left';
+      ctx.textBaseline = 'middle';
+
+      function drawPrize(text, x, y) {
+        if (!text) return;
+        ctx.shadowOffsetX = prizePx * 0.10;
+        ctx.shadowOffsetY = prizePx * 0.12;
+        ctx.shadowBlur    = prizePx * 0.08;
+        ctx.shadowColor   = 'rgba(0,0,0,0.20)';
+        ctx.fillText(text, x, y);
+        ctx.shadowOffsetX = prizePx * 0.07;
+        ctx.shadowOffsetY = prizePx * 0.09;
+        ctx.shadowBlur    = 0;
+        ctx.shadowColor   = 'rgba(0,0,0,0.38)';
+        ctx.fillText(text, x, y);
+        ctx.shadowColor = 'transparent';
+      }
+
+      drawPrize(st7arAmt,  (0.0164 + 0.01) * W, (0.333 + 0.068 / 2) * H);
+      drawPrize(super6Amt, (0.0125 + 0.01) * W, (0.462 + 0.060 / 2) * H);
+
+      // CIRCLE NUMBERS (Poppins 800, dark, centred in each circle)
+      var circlePx = Math.round(W * 3.2 / 100);
+      ctx.font         = '800 ' + circlePx + 'px Poppins';
+      ctx.fillStyle    = '#111';
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowColor  = 'transparent';
+
+      allCircles.forEach(function(inp, idx) {
+        var val = circleVals[idx];
+        if (val === '' || val == null) return;
+        var xPct = parseFloat(inp.style.left) / 100;
+        var yPct = parseFloat(inp.style.top)  / 100;
+        ctx.fillText(
+          String(parseInt(val, 10)),
+          (xPct + 0.06953 / 2) * W,
+          (yPct + 0.08874 / 2) * H
+        );
       });
 
-      const fname = 'mywin-result' + (dateLabel ? '-' + dateLabel : '') + '.png';
-      const link  = document.createElement('a');
+      // Download
+      var fname = 'mywin-result' + (dateLabel ? '-' + dateLabel : '') + '.png';
+      var link  = document.createElement('a');
       link.download = fname;
       link.href     = canvas.toDataURL('image/png');
       link.click();
+
     } catch (err) {
       alert('Could not save image: ' + err.message);
     } finally {
